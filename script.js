@@ -1,4 +1,38 @@
+// ПОДКЛЮЧЕНИЕ FIREBASE
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { 
+    getAuth, 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+import { 
+    getFirestore, 
+    collection, 
+    addDoc, 
+    getDocs, 
+    query, 
+    where 
+} from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyD5ize11n0eG3FvljZqd-9wGzmzYZD4i0M",
+    authDomain: "flora-shop-9042e.firebaseapp.com",
+    projectId: "flora-shop-9042e",
+    storageBucket: "flora-shop-9042e.firebasestorage.app",
+    messagingSenderId: "1051945470733",
+    appId: "1:1051945470733:web:4c775f979fe6c9b097fe44",
+    measurementId: "G-QKQ72VZ6LM"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
 // БАЗА ДАННЫХ ТОВАРОВ
+
 const products = [
     { id: 1, name: "Букет из красных роз", price: 3200, category: "Букеты", image: "https://i.pinimg.com/736x/fc/84/42/fc8442d784ec99c162a41c4da4b10c95.jpg" },
     { id: 2, name: "Букет из белых роз", price: 4500, category: "Букеты", image: "https://i.pinimg.com/736x/bf/8d/57/bf8d57a722328bbe99f9d7676784a506.jpg" },
@@ -11,10 +45,10 @@ const products = [
 ];
 
 let cart = JSON.parse(localStorage.getItem('floraCart')) || [];
-let users = JSON.parse(localStorage.getItem('floraUsers')) || [];
-let currentUser = localStorage.getItem('floraCurrentUser') || null;
+let currentUser = null;
 
 // НАВИГАЦИЯ
+
 function showPage(pageId) {
     const pages = document.querySelectorAll('.page');
     pages.forEach(page => page.classList.remove('active'));
@@ -34,6 +68,7 @@ function showLoginForm() {
 }
 
 // ТОВАРЫ
+
 function renderProducts() {
     const container = document.getElementById('products-container');
     container.innerHTML = '';
@@ -61,6 +96,7 @@ function renderProducts() {
 }
 
 // КОРЗИНА
+
 function addToCart(productId) {
     const product = products.find(p => p.id === productId);
     const existingItem = cart.find(item => item.id === productId);
@@ -157,29 +193,54 @@ function removeFromCart(productId) {
     renderProducts();
 }
 
-function checkout() {
+// ОФОРМЛЕНИЕ ЗАКАЗА (с отправкой в Firebase)
+
+async function checkout() {
     if (cart.length === 0) {
         alert('Ваша корзина пуста');
         return;
     }
 
-    if (currentUser) {
-        const user = users.find(u => u.phone === currentUser);
-        const userName = user ? user.name : currentUser;
-        alert(`Спасибо за заказ, ${userName}! Мы свяжемся с вами по номеру ${currentUser} в ближайшее время.`);
+    if (!currentUser) {
+        alert('Для оформления заказа, пожалуйста, войдите в аккаунт или зарегистрируйтесь.');
+        showPage('login');
+        return;
+    }
+
+    try {
+        // Получаем имя и телефон из localStorage
+        const userName = localStorage.getItem('floraUserName') || 'Неизвестно';
+        const userPhone = localStorage.getItem('floraUserPhone') || 'Неизвестно';
+
+        const order = {
+            userId: currentUser.uid,
+            userName: userName,
+            userPhone: userPhone,
+            userEmail: currentUser.email,
+            items: cart,
+            total: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+            createdAt: new Date().toISOString(),
+            status: 'new'
+        };
+
+        await addDoc(collection(db, "orders"), order);
+
+        alert(`Спасибо за заказ, ${userName}! Мы свяжемся с вами по номеру ${userPhone} в ближайшее время.`);
+        
         cart = [];
         localStorage.setItem('floraCart', JSON.stringify(cart));
         updateCartCount();
         renderCart();
         renderProducts();
-    } else {
-        alert('Для оформления заказа, пожалуйста, войдите в аккаунт или зарегистрируйтесь.');
-        showPage('login');
+    } catch (error) {
+        console.error("Ошибка при оформлении заказа:", error);
+        alert('Произошла ошибка при оформлении заказа. Попробуйте ещё раз.');
     }
 }
 
-// АВТОРИЗАЦИЯ
-function register() {
+// АВТОРИЗАЦИЯ ЧЕРЕЗ FIREBASE
+// ==========================================
+async function register() {
     const name = document.getElementById('register-name').value.trim();
     const phone = document.getElementById('register-phone').value.trim();
 
@@ -187,33 +248,41 @@ function register() {
         alert('Пожалуйста, заполните все поля');
         return;
     }
-    if (phone.length < 10) {
-        alert('Пожалуйста, введите корректный номер телефона');
-        return;
+
+    try {
+        const email = phone.replace(/\D/g, '') + '@flora-shop.com';
+        const password = 'flora' + phone.replace(/\D/g, '').slice(-6);
+
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        
+        await addDoc(collection(db, "users"), {
+            uid: userCredential.user.uid,
+            name: name,
+            phone: phone,
+            email: email,
+            createdAt: new Date().toISOString()
+        });
+
+        // Сохраняем имя и телефон в localStorage
+        localStorage.setItem('floraUserName', name);
+        localStorage.setItem('floraUserPhone', phone);
+
+        alert(`Добро пожаловать, ${name}! Ваш аккаунт создан.`);
+        document.getElementById('register-name').value = '';
+        document.getElementById('register-phone').value = '';
+        showPage('home');
+    } catch (error) {
+        console.error("Ошибка регистрации:", error);
+        if (error.code === 'auth/email-already-in-use') {
+            alert('Этот номер уже зарегистрирован. Пожалуйста, войдите.');
+            showLoginForm();
+        } else {
+            alert('Ошибка при регистрации: ' + error.message);
+        }
     }
-
-    const existingUser = users.find(user => user.phone === phone);
-    if (existingUser) {
-        alert('Этот номер уже зарегистрирован. Пожалуйста, войдите.');
-        showLoginForm();
-        return;
-    }
-
-    const newUser = { id: Date.now(), name: name, phone: phone };
-    users.push(newUser);
-    localStorage.setItem('floraUsers', JSON.stringify(users));
-
-    currentUser = phone;
-    localStorage.setItem('floraCurrentUser', currentUser);
-
-    alert(`Добро пожаловать, ${name}! Ваш аккаунт создан.`);
-    document.getElementById('register-name').value = '';
-    document.getElementById('register-phone').value = '';
-    checkAuthStatus();
-    showPage('home');
 }
 
-function login() {
+async function login() {
     const phone = document.getElementById('login-phone').value.trim();
 
     if (!phone || phone.length < 10) {
@@ -221,51 +290,62 @@ function login() {
         return;
     }
 
-    const user = users.find(u => u.phone === phone);
+    try {
+        const email = phone.replace(/\D/g, '') + '@flora-shop.com';
+        const password = 'flora' + phone.replace(/\D/g, '').slice(-6);
 
-    if (!user) {
-        const registerNow = confirm('Аккаунт с таким номером не найден. Хотите зарегистрироваться?');
-        if (registerNow) {
-            document.getElementById('register-phone').value = phone;
-            showRegisterForm();
+               await signInWithEmailAndPassword(auth, email, password);
+        
+        // Получаем имя и телефон из базы данных
+        const usersQuery = query(collection(db, "users"), where("email", "==", email));
+        const usersSnapshot = await getDocs(usersQuery);
+        
+        if (!usersSnapshot.empty) {
+            const userData = usersSnapshot.docs[0].data();
+            localStorage.setItem('floraUserName', userData.name);
+            localStorage.setItem('floraUserPhone', userData.phone);
         }
-        return;
+        
+        alert('С возвращением!');
+        document.getElementById('login-phone').value = '';
+        showPage('home');
+    } catch (error) {
+        console.error("Ошибка входа:", error);
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            const registerNow = confirm('Аккаунт с таким номером не найден. Хотите зарегистрироваться?');
+            if (registerNow) {
+                document.getElementById('register-phone').value = phone;
+                showRegisterForm();
+            }
+        } else {
+            alert('Ошибка при входе: ' + error.message);
+        }
     }
+}
 
-    currentUser = phone;
-    localStorage.setItem('floraCurrentUser', currentUser);
-
-    alert(`С возвращением, ${user.name}!`);
-    document.getElementById('login-phone').value = '';
-    checkAuthStatus();
+async function logout() {
+    await signOut(auth);
     showPage('home');
 }
 
-function logout() {
-    localStorage.removeItem('floraCurrentUser');
-    currentUser = null;
-    checkAuthStatus();
-    showPage('home');
-}
-
-function checkAuthStatus() {
+function setupAuthListener() {
     const authBtn = document.getElementById('auth-btn');
-    const statusText = document.getElementById('user-status');
 
-    if (currentUser) {
-        const user = users.find(u => u.phone === currentUser);
-        const userName = user ? user.name : currentUser;
-        authBtn.innerText = 'Выйти';
-        authBtn.onclick = logout;
-        if (statusText) statusText.innerText = 'Вы вошли как: ' + userName;
-    } else {
-        authBtn.innerText = 'Вход';
-        authBtn.onclick = () => showPage('login');
-        if (statusText) statusText.innerText = '';
-    }
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            currentUser = user;
+            authBtn.innerText = 'Выйти';
+            authBtn.onclick = logout;
+        } else {
+            currentUser = null;
+            authBtn.innerText = 'Вход';
+            authBtn.onclick = () => showPage('login');
+        }
+    });
 }
 
 // УВЕДОМЛЕНИЯ
+// ==========================================
 function showNotification(message) {
     const notification = document.createElement('div');
     notification.style.cssText = `
@@ -279,8 +359,21 @@ function showNotification(message) {
 }
 
 // ЗАПУСК
+// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     renderProducts();
     updateCartCount();
-    checkAuthStatus();
+    setupAuthListener();
 });
+// Делаем функции глобальными (для onclick в HTML)
+window.showPage = showPage;
+window.showRegisterForm = showRegisterForm;
+window.showLoginForm = showLoginForm;
+window.addToCart = addToCart;
+window.increaseQuantity = increaseQuantity;
+window.decreaseQuantity = decreaseQuantity;
+window.removeFromCart = removeFromCart;
+window.checkout = checkout;
+window.register = register;
+window.login = login;
+window.logout = logout;
