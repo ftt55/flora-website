@@ -2,9 +2,12 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> //просмотр мб. приложений
     <title>FLORA | Цветочная мастерская</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css"> //подключает стиль
+           <link rel="manifest" href="manifest.json">
+       <meta name="theme-color" content="#490b1a">
+       <link rel="apple-touch-icon" href="icon-192.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Montserrat:wght@200;300;400;500&display=swap" rel="stylesheet">
@@ -81,5 +84,19 @@
 
 <script src="script.js" type="module"></script>
 
+       <script>
+           if ('serviceWorker' in navigator) {
+               window.addEventListener('load', () => {
+                   navigator.serviceWorker.register('/flora-website/service-worker.js')
+                       .then(registration => {
+                           console.log('Service Worker зарегистрирован:', registration);
+                       })
+                       .catch(error => {
+                           console.log('Ошибка регистрации Service Worker:', error);
+                       });
+               });
+           }
+       </script>
+       
 </body>
 </html>
