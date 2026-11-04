@@ -1,4 +1,4 @@
-const CACHE_NAME = 'flora-cache-v1';
+const CACHE_NAME = 'flora-cache-v2';
 const urlsToCache = [
   '/flora-website/',
   '/flora-website/index.html',
